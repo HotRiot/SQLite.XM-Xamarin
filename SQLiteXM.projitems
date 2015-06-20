@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects>$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>{D2017D09-A1E1-4279-B703-0804D1448D36}</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>SQLiteXM</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)AlterDefinition.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)DatabaseDescriptor.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Defines.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ErrorMessages.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)InsertDefinition.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)InsertResponse.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Logging.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ProcessSQLStatements.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SqlStatements.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SxmConnection.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)TableDefinition.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SxmTransaction.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)IndexDefinition.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SxmException.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SxmSTransaction.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Synchronize.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SynchDescriptor.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SxmInit.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)HotRiot\HotRiot_CS.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SynchError.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SynchOptions.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="$(MSBuildThisFileDirectory)HotRiot\" />
+  </ItemGroup>
+</Project>
