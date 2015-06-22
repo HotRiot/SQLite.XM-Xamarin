@@ -1,3 +1,9 @@
 SQLite.XM is a SQLite wrapper written in C# and designed to be used with Xamarin based mobile applications. It makes using SQLite with Xamarin a snap. 
 
 SQLite.XM shields your application from the details of working directly with SQLite. Instead, your app interfaces with a higher level layer that provides database CRUD (Create, Read, Update, and Delete) functionality, in addition to providing an abstraction layer that greatly simplifies retrieving records from a search. SQLite.XM also takes care of initializing your apps schema, performing schema updates, managing resources, and synchronizing data to a server-side database.  
+
+SQLite.XM is dependent on Json.NET, which is freely available through NuGet.
+
+Json.NET is a high performance JSON processor for .NET. It include assemblies that support Windows, Windows Phone, Mono, MonoTouch and MonoDroid. It can be installed directly from within the Visual Studio IDE using NuGet. Select Project->Manage Nuget Packages, then search for Json.NET. It can also be downloaded from the following location and installed manually:
+
+https://json.codeplex.com/releases/view/117958
