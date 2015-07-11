@@ -35,7 +35,7 @@ namespace SQLiteXM
 				this.SynchPostProcessDel = synchOptions.SynchPostProcessDel;
 				this.SynchPreProcessDel = synchOptions.SynchPreProcessDel;
 				this.SynchErrorDel = synchOptions.SynchErrorDel;
-			}
+			} 
 		}
 	}
 

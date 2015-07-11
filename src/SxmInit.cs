@@ -15,6 +15,8 @@ namespace SQLiteXM
 		public static bool initialize (string hrAppName, SynchOptions synchOptions = null) // Default HotRiot synchronize.
 		{
 			SynchSettings synchSettings = new SynchSettings (synchOptions);
+			if (synchSettings.SynchErrorDel == null)
+				synchSettings.SynchErrorDel = Synchronize.ErrorDel;
 			synchSettings.SynchDel = Synchronize.SynchDel;
 			
 			return initialize (hrAppName, synchSettings);
@@ -94,6 +96,24 @@ namespace SQLiteXM
 			if (synchronized.TryGetValue (databaseName, out synchronize) == true)
 				synchronize.interruptSynchThread ();
 		}
+
+		public static bool getSynchMonitor(string databaseName, int millisecondsTimeout)
+		{
+			Synchronize synchronize = null;
+			if (synchronized.TryGetValue (databaseName, out synchronize) == true)
+				return synchronize.getSynchMonitor (millisecondsTimeout);
+			else
+				return true;
+		}
+
+		public static void releaseSynchMonitor(string databaseName)
+		{
+			Synchronize synchronize = null;
+			if (synchronized.TryGetValue (databaseName, out synchronize) == true)
+				synchronize.releaseSynchMonitor ();
+		}
+
+
 
 		private static void applyCreateTableStatement (string key, Hashtable connectionMap, TableDefinition tableDefinition, Hashtable tableNamesMap)
 		{
@@ -324,7 +344,7 @@ namespace SQLiteXM
 
 		private static void addSynchID (string[] parts, SxmTransaction sxmTransaction)
 		{
-			string alterSQL = String.Format ("ALTER TABLE {0} ADD COLUMN _systemSynchID TEXT NOT NULL DEFAULT ''", parts [1]);
+			string alterSQL = String.Format ("ALTER TABLE {0} ADD COLUMN systemSynchID TEXT NOT NULL DEFAULT ''", parts [1]);
 			sxmTransaction.executeAlterTable (alterSQL);
 		}
 
@@ -358,7 +378,7 @@ namespace SQLiteXM
 
 			if (isTableInMap (databaseName, databaseTable, tableNamesMap) == false) 
 			{
-				string tableSQL = String.Format("CREATE TABLE {0} (id INTEGER PRIMARY KEY AUTOINCREMENT, dbName TEXT, tableName TEXT, action TEXT, _systemSynchID TEXT)", databaseTable);
+				string tableSQL = String.Format("CREATE TABLE {0} (id INTEGER PRIMARY KEY AUTOINCREMENT, dbName TEXT, tableName TEXT, action TEXT, systemSynchID TEXT)", databaseTable);
 				sxmTransaction.executeTableStatement ( tableSQL );
 				ArrayList dbTableNames = tableNamesMap[databaseName] as ArrayList;
 				dbTableNames.Add (databaseTable);
@@ -375,11 +395,11 @@ namespace SQLiteXM
 
 			if (tableDefinition.CloudSynch != Defines.NO_CLOUD_SYNCH)
 			{
-				string tableSQL = String.Format ("CREATE TRIGGER IF NOT EXISTS update{0} UPDATE ON {0} BEGIN INSERT INTO _systemCloudSynch (dbName, tableName, action, _systemSynchID) VALUES ('{1}', '{0}', 'update', new._systemSynchID); END;", databaseTable, databaseName);
+				string tableSQL = String.Format ("CREATE TRIGGER IF NOT EXISTS update{0} UPDATE ON {0} BEGIN INSERT INTO _systemCloudSynch (dbName, tableName, action, systemSynchID) VALUES ('{1}', '{0}', 'update', new.systemSynchID); END;", databaseTable, databaseName);
 				sxmTransaction.executeCreateTrigger ( tableSQL );
 				if (tableDefinition.CloudSynch == Defines.CLOUD_SYNCH) 
 				{
-					tableSQL = String.Format ("CREATE TRIGGER IF NOT EXISTS delete{0} DELETE ON {0} BEGIN INSERT INTO _systemCloudSynch (dbName, tableName, action, _systemSynchID) VALUES ('{1}', '{0}', 'delete', old._systemSynchID); END;", databaseTable, databaseName);
+					tableSQL = String.Format ("CREATE TRIGGER IF NOT EXISTS delete{0} DELETE ON {0} BEGIN INSERT INTO _systemCloudSynch (dbName, tableName, action, systemSynchID) VALUES ('{1}', '{0}', 'delete', old.systemSynchID); END;", databaseTable, databaseName);
 					sxmTransaction.executeCreateTrigger (tableSQL);
 				}
 			}

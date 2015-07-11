@@ -28,8 +28,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)SynchDescriptor.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SxmInit.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)HotRiot\HotRiot_CS.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)SynchError.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SynchOptions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SynchResponse.cs" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="$(MSBuildThisFileDirectory)HotRiot\" />

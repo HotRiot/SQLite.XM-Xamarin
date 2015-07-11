@@ -110,7 +110,11 @@ namespace SQLiteXM
 					ArrayList synchIDPV = new ArrayList ();
 					synchIDPV.Add ((synchID = Guid.NewGuid ().ToString ()));
 					synchIDPV.Add ((recordID = (long)nextRow ["rowID"]));
-					string updateStmt = String.Format ("UPDATE {0} SET _systemSynchID = ? WHERE id = ?", insertDefinition.TableName);
+					string updateStmt = String.Format ("UPDATE {0} SET systemSynchID = ? WHERE id = ?", insertDefinition.TableName);
+					executeNonQuery (updateStmt, synchIDPV);
+
+					synchIDPV.RemoveAt (1);
+					updateStmt = String.Format ("UPDATE _systemCloudSynch SET action='insert' WHERE systemSynchID = ? ");
 					executeNonQuery (updateStmt, synchIDPV);
 				}
 			}

@@ -9,9 +9,9 @@ using System.Collections.Specialized;
 
 namespace SQLiteXM
 {
-	public delegate Task<bool> SynchDel (List<SynchDescriptor> sdl);
-	public delegate Task<bool> SynchErrorDel (SynchError synchError);
-	public delegate Task SynchPostProcessDel (List<SynchDescriptor> sdl);
+	public delegate Task<SynchResponse> SynchDel (List<SynchDescriptor> sdList);
+	public delegate Task SynchErrorDel (SynchResponse synchResponse);
+	public delegate Task SynchPostProcessDel (List<SynchDescriptor> sdList);
 	public delegate Task<List<SynchDescriptor>> SynchPreProcessDel (SynchDescriptor sd);
 
 	public class Synchronize
@@ -22,6 +22,7 @@ namespace SQLiteXM
 		private static HotRiot hotRiot;
 		private readonly EventWaitHandle synchLock;
 		private static SynchSettings synchSettings;
+		private readonly object synchMonitor = new object();
 		private Dictionary<string, Hashtable> descriptorRows = new Dictionary<string, Hashtable> ();
 		private static Dictionary<string, Object> synchDescriptors = new Dictionary<string, Object> ();
 		private static Dictionary<string, ArrayList> tableFileFields = new Dictionary<string, ArrayList>();
@@ -49,6 +50,17 @@ namespace SQLiteXM
 		public void interruptSynchThread()
 		{
 			synchLock.Set ();
+		}
+
+		public bool getSynchMonitor(int millisecondsTimeout)
+		{
+			return Monitor.TryEnter (synchLock, millisecondsTimeout);
+		}
+
+		public void releaseSynchMonitor()
+		{
+			if (Monitor.IsEntered (synchLock) == true)
+				Monitor.Exit (synchLock);
 		}
 
 		private Synchronize (SxmConnection sxmConnection, string hrAppName, SynchSettings synchSettings)
@@ -113,68 +125,79 @@ namespace SQLiteXM
 
 		private async void startSynch()
 		{
+			Hashtable recordToSynch = null;
+
 			while (true) 
 			{
 				try
 				{
 					int waitDuration = Timeout.Infinite;
-					Hashtable recordToSynch = getNextRecordToSynch ();
+					recordToSynch = getNextRecordToSynch ();
 
 					do
 					{
-						if (recordToSynch != null && recordToSynch.Count > 0) 
+						getSynchMonitor (Timeout.Infinite);
+						try
 						{
-							string tableName = (string)recordToSynch ["tableName"];
-							if (tableName != null && descriptorRows.ContainsKey(tableName) == true)
+							if (recordToSynch != null && recordToSynch.Count > 0) 
 							{
-								Hashtable descriptorRow = descriptorRows [tableName];
-								if ((long)descriptorRow ["cloudSynchFlag"] != Defines.NO_CLOUD_SYNCH) 
+								string tableName = (string)recordToSynch ["tableName"];
+								if (tableName != null && descriptorRows.ContainsKey(tableName) == true)
 								{
-									Hashtable recordDataToSynch = getRecordDataToSynch ((string)recordToSynch ["dbName"], (string)recordToSynch ["tableName"], (string)recordToSynch ["_systemSynchID"]);
-									if (recordDataToSynch != null && recordDataToSynch.Count > 0) 
+									Hashtable descriptorRow = descriptorRows [tableName];
+									if ((long)descriptorRow ["cloudSynchFlag"] != Defines.NO_CLOUD_SYNCH) 
 									{
-										List<SynchDescriptor> synchDescriptors = null;
-										SynchDescriptor synchDescriptor = new SynchDescriptor ((string)recordToSynch ["action"], (string)recordToSynch ["dbName"], (string)recordToSynch ["tableName"], (Hashtable)recordDataToSynch);
+										Hashtable recordDataToSynch = getRecordDataToSynch ((string)recordToSynch ["dbName"], (string)recordToSynch ["tableName"], (string)recordToSynch ["systemSynchID"]);
+										if (recordDataToSynch != null && recordDataToSynch.Count > 0) 
+										{
+											List<SynchDescriptor> synchDescriptors = null;
+											SynchDescriptor synchDescriptor = new SynchDescriptor ((string)recordToSynch ["action"], (string)recordToSynch ["dbName"], (string)recordToSynch ["tableName"], (Hashtable)recordDataToSynch);
 
-										if (hrAppName == null) // Performing custom synchronization.
-										{
-											synchDescriptors = new List<SynchDescriptor> ();
-											synchDescriptors.Add (synchDescriptor);
-										}
-										else 
-										{
-											if (Synchronize.synchSettings.SynchPreProcessDel != null) // Pre-process the record to be synchronized.
-												synchDescriptors = await Synchronize.synchSettings.SynchPreProcessDel (synchDescriptor);
-											else 
+											if (hrAppName == null) // Performing custom synchronization.
 											{
 												synchDescriptors = new List<SynchDescriptor> ();
 												synchDescriptors.Add (synchDescriptor);
 											}
-										}
-											
-										if (await Synchronize.synchSettings.SynchDel (synchDescriptors) == true)
-										{
-											removeRecordFromSynch ((long)recordToSynch ["id"]);
-											if (Synchronize.synchSettings.SynchPostProcessDel != null) // Pre-process the record that was synchronized.
-												await Synchronize.synchSettings.SynchPostProcessDel (synchDescriptors);
+											else 
+											{
+												if (Synchronize.synchSettings.SynchPreProcessDel != null) // Pre-process the record to be synchronized.
+													synchDescriptors = await Synchronize.synchSettings.SynchPreProcessDel (synchDescriptor);
+												else 
+												{
+													synchDescriptors = new List<SynchDescriptor> ();
+													synchDescriptors.Add (synchDescriptor);
+												}
+											}
+
+											SynchResponse synchResponse = await Synchronize.synchSettings.SynchDel (synchDescriptors);
+											if (synchResponse.removeFlag == true)
+											{
+												removeRecordFromSynch ((long)recordToSynch ["id"]);
+												if (Synchronize.synchSettings.SynchPostProcessDel != null) // Post-process the record that was synchronized.
+													await Synchronize.synchSettings.SynchPostProcessDel (synchDescriptors);
+											}
+											else
+											{
+												recordToSynch = null;
+												waitDuration = Defines.ONE_MINUTE * 2;
+											}
 										}
 										else
-										{
-											recordToSynch = null;
-											waitDuration = Defines.ONE_MINUTE * 2;
-										}
+											removeRecordFromSynch ((long)recordToSynch ["id"]);
 									}
 									else
 										removeRecordFromSynch ((long)recordToSynch ["id"]);
 								}
 								else
 									removeRecordFromSynch ((long)recordToSynch ["id"]);
-							}
-							else
-								removeRecordFromSynch ((long)recordToSynch ["id"]);
 
-							if (recordToSynch != null) // If null, a recoverable error was encountered trying to synch the record.
-								recordToSynch = getNextRecordToSynch ();
+								if (recordToSynch != null) // If null, a recoverable error was encountered trying to synch the record.
+									recordToSynch = getNextRecordToSynch ();
+							}
+						}
+						finally
+						{
+							releaseSynchMonitor ();  // Release the monitor between each record synch in order to allow waiting operations to proceed.
 						}
 					}while (recordToSynch != null && recordToSynch.Count > 0);
 
@@ -182,21 +205,24 @@ namespace SQLiteXM
 					synchLock.Reset ();
 				}
 				#pragma warning disable 0168
-				catch (Exception notUsed) { /* We need this to ensure the synch loop. */ }
+				catch (Exception notUsed) 
+				{ 
+					removeRecordFromSynch ((long)recordToSynch ["id"]); 
+				}
 				#pragma warning restore 0168
 			}
 		}
 
-		private Hashtable getRecordDataToSynch (string dbName, string tableName, string _systemSynchID)
+		private Hashtable getRecordDataToSynch (string dbName, string tableName, string systemSynchID)
 		{
 			Hashtable row = null;
 
 			ArrayList paramValues = new ArrayList ();
-			paramValues.Add (_systemSynchID);
+			paramValues.Add (systemSynchID);
 
 			using (SxmTransaction sxmTransaction = new SxmTransaction (dbName))
 			{
-				sxmTransaction.executeQueryDirect (string.Format ("SELECT * FROM {0} WHERE _systemSynchID = ?", tableName), paramValues);
+				sxmTransaction.executeQueryDirect (string.Format ("SELECT * FROM {0} WHERE systemSynchID = ?", tableName), paramValues);
 				row = sxmTransaction.getNextRow ();
 			}
 
@@ -228,43 +254,77 @@ namespace SQLiteXM
 			}
 		}
 
-		public static async Task<bool> SynchDel (List<SynchDescriptor> sdList)
+		public static async Task<SynchResponse> SynchDel (List<SynchDescriptor> sdList)
 		{
-			bool retval = true; // Delete record from relay log.
+			int countProcessed = 1;
 
 			foreach (SynchDescriptor synchDescriptor in sdList) 
 			{
-				if (synchDescriptor.action.Equals ("update") == true)
-					retval = await synchData (synchDescriptor);
+				if (synchDescriptor.action.Equals ("insert") == true || 
+					synchDescriptor.action.Equals ("update") == true) 
+						synchDescriptor.synchResponse = await synchData (synchDescriptor);
 
 				if (synchDescriptor.action.Equals ("delete") == true)
-					retval = await synchDelData (synchDescriptor);
+					synchDescriptor.synchResponse = await synchDelData (synchDescriptor);
 
-				if (retval == false)
+				// There was an error and it is non-recoverable.
+				if (synchDescriptor.synchResponse.synchErrorType != SQLiteXM.Defines.SynchErrorTypes.success &&
+					synchDescriptor.synchResponse.removeFlag == true) 
+				{
+					await performPartialSynchCleanup (sdList, synchDescriptor.synchResponse, countProcessed);
 					break;
+				}
+
+				// There was an error and it is recoverable. Don't delete record from relay log.
+				if (synchDescriptor.synchResponse.synchErrorType != SQLiteXM.Defines.SynchErrorTypes.success &&
+					synchDescriptor.synchResponse.removeFlag == false)
+						break; 
+
+				++countProcessed;
 			}
 
-			return retval;
+			return sdList [countProcessed-1].synchResponse;
+		}
+
+		private static async Task performPartialSynchCleanup (List<SynchDescriptor> sdList, SynchResponse synchResponse, int countProcessed)
+		{
+			// If delete record from relay log with error, then remove any already inserted records.
+			for (int i = 0; i < countProcessed; ++i) 
+			{
+				SynchDescriptor processedSD = sdList [i];
+				if (processedSD.action.Equals ("insert") == true) 
+				{
+					SynchResponse cleanupSynchResponse = await synchDelData (processedSD);
+					if (cleanupSynchResponse.synchErrorType != SQLiteXM.Defines.SynchErrorTypes.success)
+					{
+						if (cleanupSynchResponse.removeFlag == true) // Non-recoverable.
+							break;
+						else 
+						{
+							synchResponse.removeFlag = false;
+							break;
+						}
+					}
+				}
+			}
 		}
 
 		#pragma warning disable 1998
-		internal static async Task<bool> ErrorDel(SynchError synchError)
+		internal static async Task ErrorDel(SynchResponse synchResponse)
 		#pragma warning restore 1998
 		{
-			bool rc = true;
-
-			if (synchError.synchErrorType == SQLiteXM.Defines.SynchErrorTypes.exception ) 
+			if (synchResponse.synchErrorType == SQLiteXM.Defines.SynchErrorTypes.exception ) 
 			{
-				if (synchError.exceptionSynchError.exceptionType.Equals ("WebException") == true || 
-					synchError.exceptionSynchError.exceptionType.Equals ("IOException")  == true || 
-					synchError.exceptionSynchError.exceptionType.Equals ("OutOfMemoryException") == true)
-					    rc = false;
+				if (synchResponse.exceptionSynchError.exceptionType.Equals ("WebException") == true || 
+					synchResponse.exceptionSynchError.exceptionType.Equals ("IOException")  == true || 
+					synchResponse.exceptionSynchError.exceptionType.Equals ("OutOfMemoryException") == true)
+						synchResponse.removeFlag = false;
 			}
 			else
-				if (synchError.synchErrorType == SQLiteXM.Defines.SynchErrorTypes.processing) 
+				if (synchResponse.synchErrorType == SQLiteXM.Defines.SynchErrorTypes.processing) 
 				{
-					if (synchError.processingSynchError.resultCode == HotRiot.DB_FULL_EXCEPTION)
-						rc = false;
+					if (synchResponse.processingSynchError.resultCode == HotRiot.DB_FULL_EXCEPTION)
+						synchResponse.removeFlag = false;
 				}
 
 			// This could be used in order to avoid using 'async'.
@@ -273,17 +333,14 @@ namespace SQLiteXM
 			/*var tcs = new TaskCompletionSource<bool>();
 			tcs.SetResult(rc);			
 			return tcs.Task;*/
-
-			return rc;
 		}
 
-		private static async Task<bool> synchData (SynchDescriptor synchDescriptor)
+		private static async Task<SynchResponse> synchData (SynchDescriptor synchDescriptor)
 		{
 			HRInsertResponse hrInsertResponse = null;
 			string errorMessage = string.Empty;
-			SynchError synchError = null;
+			SynchResponse synchResponse = null;
 			String fieldName = null;
-			bool retval = true;
 
 			try
 			{
@@ -311,7 +368,7 @@ namespace SQLiteXM
 				if (hex.InnerException != null)
 					ieMessage = hex.InnerException.Message;
 
-				synchError = new SynchError (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage, (string)synchDescriptor.recordDataToSynch ["_systemSynchID"]);
+				synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage);
 			}
 
 
@@ -320,11 +377,11 @@ namespace SQLiteXM
 
 			ArrayList fileFields = null;
 			tableFileFields.TryGetValue (synchDescriptor.dbName + synchDescriptor.tableName, out fileFields);
-			recordData.Add ("systemSynchID", synchDescriptor.recordDataToSynch ["_systemSynchID"].ToString());
+			recordData.Add ("systemSynchID", synchDescriptor.recordDataToSynch ["systemSynchID"].ToString());
 
 			foreach (DictionaryEntry pair in synchDescriptor.recordDataToSynch) 
 			{
-				if ((fieldName = pair.Key.ToString ()).Equals ("_systemSynchID") == false) 
+				if ((fieldName = pair.Key.ToString ()).Equals ("systemSynchID") == false) 
 				{
 					if (fileFields != null && fileFields.Count > 0) 
 					{
@@ -376,33 +433,34 @@ namespace SQLiteXM
 				if (hex.InnerException != null)
 					ieMessage = hex.InnerException.Message;
 
-				synchError = new SynchError (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage, (string)synchDescriptor.recordDataToSynch ["_systemSynchID"]);
+				synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage);
 			}
 
 			if (hrInsertResponse != null)
 				if (hrInsertResponse.getResultCode () != HotRiot.SUCCESS) 
 				{
 					ResultDetails rd = hrInsertResponse.getResultDetails ();
-					synchError = new SynchError (SQLiteXM.Defines.SynchErrorTypes.processing, rd.ResultCode, rd.ResultText, rd.ResultMessage, (string)synchDescriptor.recordDataToSynch ["_systemSynchID"]);
+					synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.processing, rd.ResultCode, rd.ResultText, rd.ResultMessage);
 				}
 
-			if (synchError != null)
-				retval = await Synchronize.synchSettings.SynchErrorDel (synchError);
-			
-			return retval;
+			if (synchResponse != null)
+				await Synchronize.synchSettings.SynchErrorDel (synchResponse);
+			else
+				synchResponse = new SynchResponse (true, SQLiteXM.Defines.SynchErrorTypes.success);
+							
+			return synchResponse;
 		}
 
-		private static async Task<bool> synchDelData (SynchDescriptor synchDescriptor)
+		private static async Task<SynchResponse> synchDelData (SynchDescriptor synchDescriptor)
 		{
 			HRDeleteResponse hrDeleteResponse = null;
 			string errorMessage = string.Empty;
-			SynchError synchError = null;
-			bool retval = true;
+			SynchResponse synchResponse = null;
 
 			NameValueCollection recordData = new NameValueCollection();
 			foreach (DictionaryEntry pair in synchDescriptor.recordDataToSynch) 
 			{
-				if (pair.Key.ToString ().Equals ("_systemSynchID") == true) 
+				if (pair.Key.ToString ().Equals ("systemSynchID") == true) 
 				{
 					recordData.Add ("systemSynchID", pair.Value.ToString ());
 					break;
@@ -419,20 +477,22 @@ namespace SQLiteXM
 				if (hex.InnerException != null)
 					ieMessage = hex.InnerException.Message;
 
-				synchError = new SynchError (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage, (string)synchDescriptor.recordDataToSynch ["_systemSynchID"]);
+				synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage);
 			}
 
 			if (hrDeleteResponse != null)
-			if (hrDeleteResponse.getResultCode () != 0) 
+				if (hrDeleteResponse.getResultCode () != HotRiot.SUCCESS) 
 				{
-				ResultDetails rd = hrDeleteResponse.getResultDetails ();
-					synchError = new SynchError (SQLiteXM.Defines.SynchErrorTypes.processing, rd.ResultCode, rd.ResultText, rd.ResultMessage, (string)synchDescriptor.recordDataToSynch ["_systemSynchID"]);
+					ResultDetails rd = hrDeleteResponse.getResultDetails ();
+					synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.processing, rd.ResultCode, rd.ResultText, rd.ResultMessage);
 				}
 
-			if (synchError != null)
-				retval = await Synchronize.synchSettings.SynchErrorDel (synchError);
+			if (synchResponse != null)
+				await Synchronize.synchSettings.SynchErrorDel (synchResponse);
+			else
+				synchResponse = new SynchResponse (true, SQLiteXM.Defines.SynchErrorTypes.success);
 
-			return retval;
+			return synchResponse;
 		}
 	}
 }
