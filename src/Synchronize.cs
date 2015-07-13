@@ -11,7 +11,7 @@ namespace SQLiteXM
 {
 	public delegate Task<SynchResponse> SynchDel (List<SynchDescriptor> sdList);
 	public delegate Task SynchErrorDel (SynchResponse synchResponse);
-	public delegate Task SynchPostProcessDel (List<SynchDescriptor> sdList);
+	public delegate Task SynchPostProcessDel (SynchDescriptor originalSD, List<SynchDescriptor> sdList, SynchResponse synchResponse);
 	public delegate Task<List<SynchDescriptor>> SynchPreProcessDel (SynchDescriptor sd);
 
 	public class Synchronize
@@ -22,7 +22,6 @@ namespace SQLiteXM
 		private static HotRiot hotRiot;
 		private readonly EventWaitHandle synchLock;
 		private static SynchSettings synchSettings;
-		private readonly object synchMonitor = new object();
 		private Dictionary<string, Hashtable> descriptorRows = new Dictionary<string, Hashtable> ();
 		private static Dictionary<string, Object> synchDescriptors = new Dictionary<string, Object> ();
 		private static Dictionary<string, ArrayList> tableFileFields = new Dictionary<string, ArrayList>();
@@ -172,15 +171,18 @@ namespace SQLiteXM
 											SynchResponse synchResponse = await Synchronize.synchSettings.SynchDel (synchDescriptors);
 											if (synchResponse.removeFlag == true)
 											{
+												// Success or a non-recoverable error. Must inspect return synchResponse.
 												removeRecordFromSynch ((long)recordToSynch ["id"]);
-												if (Synchronize.synchSettings.SynchPostProcessDel != null) // Post-process the record that was synchronized.
-													await Synchronize.synchSettings.SynchPostProcessDel (synchDescriptors);
 											}
 											else
 											{
+												// Recoverable error was encountered.
 												recordToSynch = null;
 												waitDuration = Defines.ONE_MINUTE * 2;
 											}
+
+											if (Synchronize.synchSettings.SynchPostProcessDel != null) // Post-process the record that was synchronized.
+												await Synchronize.synchSettings.SynchPostProcessDel (synchDescriptor, synchDescriptors, synchResponse);
 										}
 										else
 											removeRecordFromSynch ((long)recordToSynch ["id"]);
@@ -256,10 +258,12 @@ namespace SQLiteXM
 
 		public static async Task<SynchResponse> SynchDel (List<SynchDescriptor> sdList)
 		{
-			int countProcessed = 1;
+			SynchDescriptor synchDescriptor = null;
 
-			foreach (SynchDescriptor synchDescriptor in sdList) 
+			for (int countProcessed=0; countProcessed<sdList.Count; countProcessed++) 
 			{
+				synchDescriptor = sdList [countProcessed];
+
 				if (synchDescriptor.action.Equals ("insert") == true || 
 					synchDescriptor.action.Equals ("update") == true) 
 						synchDescriptor.synchResponse = await synchData (synchDescriptor);
@@ -279,17 +283,15 @@ namespace SQLiteXM
 				if (synchDescriptor.synchResponse.synchErrorType != SQLiteXM.Defines.SynchErrorTypes.success &&
 					synchDescriptor.synchResponse.removeFlag == false)
 						break; 
-
-				++countProcessed;
 			}
 
-			return sdList [countProcessed-1].synchResponse;
+			return synchDescriptor.synchResponse;
 		}
 
 		private static async Task performPartialSynchCleanup (List<SynchDescriptor> sdList, SynchResponse synchResponse, int countProcessed)
 		{
 			// If delete record from relay log with error, then remove any already inserted records.
-			for (int i = 0; i < countProcessed; ++i) 
+			for (int i = 0; i <= countProcessed; ++i) 
 			{
 				SynchDescriptor processedSD = sdList [i];
 				if (processedSD.action.Equals ("insert") == true) 
