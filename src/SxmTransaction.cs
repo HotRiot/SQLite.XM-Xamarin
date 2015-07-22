@@ -106,16 +106,22 @@ namespace SQLiteXM
 				{
 					executeQueryDirect ("select last_insert_rowid() as rowID", null);
 					Hashtable nextRow = connection.getNextRow ();
+					recordID = (long)nextRow ["rowID"];
+					synchID = getSynchID (insertDefinition.TableName, recordID);
 
 					ArrayList synchIDPV = new ArrayList ();
-					synchIDPV.Add ((synchID = Guid.NewGuid ().ToString ()));
-					synchIDPV.Add ((recordID = (long)nextRow ["rowID"]));
-					string updateStmt = String.Format ("UPDATE {0} SET systemSynchID = ? WHERE id = ?", insertDefinition.TableName);
-					executeNonQuery (updateStmt, synchIDPV);
+					if (synchID == null || synchID.Length == 0)
+					{
+						synchIDPV.Add ((synchID = Guid.NewGuid ().ToString ()));
+						synchIDPV.Add (recordID);
+						executeNonQuery (String.Format ("UPDATE {0} SET systemSynchID = ? WHERE id = ?", insertDefinition.TableName), synchIDPV);
 
-					synchIDPV.RemoveAt (1);
-					updateStmt = String.Format ("UPDATE _systemCloudSynch SET action='insert' WHERE systemSynchID = ? ");
-					executeNonQuery (updateStmt, synchIDPV);
+						synchIDPV.RemoveAt (1);
+					}
+					else
+						synchIDPV.Add (synchID);
+					
+					executeNonQuery (String.Format ("UPDATE _systemCloudSynch SET action='insert' WHERE systemSynchID = ? "), synchIDPV);
 				}
 			}
 			catch (SxmException ex)
@@ -128,6 +134,31 @@ namespace SQLiteXM
 			}
 
 			return new InsertResponse (recordID, synchID);
+		}
+
+		private string getSynchID (string tableName, long recordID)
+		{
+			Hashtable row = null;
+			string systemSynchID = null;
+
+			try
+			{
+				ArrayList parameterList = new ArrayList ();
+				parameterList.Add (recordID);
+
+				executeQueryDirect (String.Format ("SELECT systemSynchID FROM {0} WHERE id = ? LIMIT 1", tableName), parameterList);
+				row = connection.getNextRow ();
+
+				if (row != null && row.Count > 0) 
+					if (row.ContainsKey ("systemSynchID") == true)
+						systemSynchID = (string)row ["systemSynchID"];
+
+			}
+			#pragma warning disable 0168
+			catch (Exception doNothing) { /* If an error occurs reading the record, then do nothing. Assume synch ID does not exist. */ }
+			#pragma warning restore 0168
+
+			return systemSynchID;
 		}
 
 		public void executeQueryDirect (string sqlStatement, ArrayList ParameterValues)

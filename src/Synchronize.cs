@@ -10,7 +10,7 @@ using System.Collections.Specialized;
 namespace SQLiteXM
 {
 	public delegate Task<SynchResponse> SynchDel (List<SynchDescriptor> sdList);
-	public delegate Task SynchErrorDel (SynchResponse synchResponse);
+	public delegate Task SynchErrorDel (SynchDescriptor synchDescriptor, SynchResponse synchResponse);
 	public delegate Task SynchPostProcessDel (SynchDescriptor originalSD, List<SynchDescriptor> sdList, SynchResponse synchResponse);
 	public delegate Task<List<SynchDescriptor>> SynchPreProcessDel (SynchDescriptor sd);
 
@@ -206,12 +206,28 @@ namespace SQLiteXM
 					synchLock.WaitOne (waitDuration);
 					synchLock.Reset ();
 				}
+				catch (SxmException ex) 
+				{
+					Defines.SxmErrorCode sxmErrorCode = (Defines.SxmErrorCode)ex.Data ["sxmErrorCode"];
+
+					if (sxmErrorCode == Defines.SxmErrorCode.sxmSTransactionTimeout != true && sxmErrorCode == Defines.SxmErrorCode.lockDB != true) 
+					{
+						if (sxmErrorCode == Defines.SxmErrorCode.sqliteException == true && ex.Data.Contains ("sqliteErrorCode") == true) 
+						{
+							SQLiteErrorCode sqliteErrorCode = (SQLiteErrorCode)ex.Data ["sqliteErrorCode"];
+							if (sqliteErrorCode != SQLiteErrorCode.Busy && sqliteErrorCode != SQLiteErrorCode.Locked)
+								removeRecordFromSynch ((long)recordToSynch ["id"]); 
+						} 
+						else
+							removeRecordFromSynch ((long)recordToSynch ["id"]); 
+					}
+				}
 				#pragma warning disable 0168
 				catch (Exception notUsed) 
+				#pragma warning restore 0168
 				{ 
 					removeRecordFromSynch ((long)recordToSynch ["id"]); 
 				}
-				#pragma warning restore 0168
 			}
 		}
 
@@ -235,11 +251,17 @@ namespace SQLiteXM
 		{
 			Hashtable row = null;
 
-			using (SxmTransaction sxmTransaction = new SxmTransaction (dbName))
+			try
 			{
-				sxmTransaction.executeQueryDirect ("SELECT * FROM _systemCloudSynch LIMIT 1", null);
-				row = sxmTransaction.getNextRow ();
+				using (SxmTransaction sxmTransaction = new SxmTransaction (dbName))
+				{
+					sxmTransaction.executeQueryDirect ("SELECT * FROM _systemCloudSynch LIMIT 1", null);
+					row = sxmTransaction.getNextRow ();
+				}
 			}
+			#pragma warning disable 0168
+			catch (Exception doNothing) { /* If an error occurs reading the synch log, just wait to try again. */ }
+			#pragma warning restore 0168
 
 			return row;
 		}
@@ -256,7 +278,7 @@ namespace SQLiteXM
 			}
 		}
 
-		public static async Task<SynchResponse> SynchDel (List<SynchDescriptor> sdList)
+		internal static async Task<SynchResponse> SynchDel (List<SynchDescriptor> sdList)
 		{
 			SynchDescriptor synchDescriptor = null;
 
@@ -312,7 +334,7 @@ namespace SQLiteXM
 		}
 
 		#pragma warning disable 1998
-		internal static async Task ErrorDel(SynchResponse synchResponse)
+		internal static async Task ErrorDel(SynchDescriptor synchDescriptor, SynchResponse synchResponse)
 		#pragma warning restore 1998
 		{
 			if (synchResponse.synchErrorType == SQLiteXM.Defines.SynchErrorTypes.exception ) 
@@ -373,80 +395,82 @@ namespace SQLiteXM
 				synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage);
 			}
 
-
-			NameValueCollection recordData = new NameValueCollection();
-			NameValueCollection fileData = new NameValueCollection();
-
-			ArrayList fileFields = null;
-			tableFileFields.TryGetValue (synchDescriptor.dbName + synchDescriptor.tableName, out fileFields);
-			recordData.Add ("systemSynchID", synchDescriptor.recordDataToSynch ["systemSynchID"].ToString());
-
-			foreach (DictionaryEntry pair in synchDescriptor.recordDataToSynch) 
+			if (synchResponse == null) 
 			{
-				if ((fieldName = pair.Key.ToString ()).Equals ("systemSynchID") == false) 
+				NameValueCollection recordData = new NameValueCollection ();
+				NameValueCollection fileData = new NameValueCollection ();
+
+				ArrayList fileFields = null;
+				tableFileFields.TryGetValue (synchDescriptor.dbName + synchDescriptor.tableName, out fileFields);
+				recordData.Add ("systemSynchID", synchDescriptor.recordDataToSynch ["systemSynchID"].ToString ());
+
+				foreach (DictionaryEntry pair in synchDescriptor.recordDataToSynch) 
 				{
-					if (fileFields != null && fileFields.Count > 0) 
+					if ((fieldName = pair.Key.ToString ()).Equals ("systemSynchID") == false) 
 					{
-						bool fileFound = false;
-						foreach (string fielFieldName in fileFields) 
+						if (fileFields != null && fileFields.Count > 0) 
 						{
-							if (fielFieldName.Equals (fieldName) == true)  // This is a File field.
+							bool fileFound = false;
+							foreach (string fielFieldName in fileFields) 
 							{
-								string filePath = pair.Value.ToString ();
+								if (fielFieldName.Equals (fieldName) == true) 
+								{  // This is a File field.
+									string filePath = pair.Value.ToString ();
 
-								if (filePath != null && filePath != string.Empty)
-									fileData.Add (fieldName, filePath);
+									if (filePath != null && filePath != string.Empty)
+										fileData.Add (fieldName, filePath);
 
-								fileFound = true;
-								break;
+									fileFound = true;
+									break;
+								}
 							}
-						}
 
-						if (fileFound == false)
+							if (fileFound == false)
+								recordData.Add (fieldName, pair.Value.ToString ());
+						} else
 							recordData.Add (fieldName, pair.Value.ToString ());
-					} 
-					else
-						recordData.Add (fieldName, pair.Value.ToString ());
-				}
-			}
-			
-			try
-			{
-				if ((hrInsertResponse = await HotRiot.getHotRiotInstance.submitKeyUpdateInsertRecord (synchDescriptor.tableName, "systemSynchID", recordData, fileData)).getResultCode() == HotRiot.SUCCESS)
-				{
-					foreach (string fielFieldName in fileFields) 
-					{
-						if (fileData [fielFieldName] == null)
-						{
-							try
-							{
-								hrInsertResponse = await HotRiot.getHotRiotInstance.keyDeleteFile (synchDescriptor.tableName, "systemSynchID", recordData ["systemSynchID"], fielFieldName);
-							}
-							#pragma warning disable 0168
-							catch( Exception notUsed) {}
-							#pragma warning restore 0168
-						}
 					}
 				}
-			}			
-			catch( HotRiotException hex )
-			{
-				string ieMessage = string.Empty;
-				if (hex.InnerException != null)
-					ieMessage = hex.InnerException.Message;
-
-				synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage);
-			}
-
-			if (hrInsertResponse != null)
-				if (hrInsertResponse.getResultCode () != HotRiot.SUCCESS) 
+			
+				try 
 				{
-					ResultDetails rd = hrInsertResponse.getResultDetails ();
-					synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.processing, rd.ResultCode, rd.ResultText, rd.ResultMessage);
+					if ((hrInsertResponse = await HotRiot.getHotRiotInstance.submitKeyUpdateInsertRecord (synchDescriptor.tableName, "systemSynchID", recordData, fileData)).getResultCode () == HotRiot.SUCCESS) {
+						foreach (string fielFieldName in fileFields) 
+						{
+							if (fileData [fielFieldName] == null) 
+							{
+								try 
+								{
+									hrInsertResponse = await HotRiot.getHotRiotInstance.keyDeleteFile (synchDescriptor.tableName, "systemSynchID", recordData ["systemSynchID"], fielFieldName);
+								}
+								#pragma warning disable 0168
+								catch (Exception notUsed) {}
+								#pragma warning restore 0168
+							}
+						}
+					}
+				} 
+				catch (HotRiotException hex) 
+				{
+					string ieMessage = string.Empty;
+					if (hex.InnerException != null)
+						ieMessage = hex.InnerException.Message;
+
+					synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage);
 				}
 
+				if (hrInsertResponse != null) 
+				{
+					if (hrInsertResponse.getResultCode () != HotRiot.SUCCESS) 
+					{
+						ResultDetails rd = hrInsertResponse.getResultDetails ();
+						synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.processing, rd.ResultCode, rd.ResultText, rd.ResultMessage);
+					}
+				}
+			}
+
 			if (synchResponse != null)
-				await Synchronize.synchSettings.SynchErrorDel (synchResponse);
+				await Synchronize.synchSettings.SynchErrorDel (synchDescriptor, synchResponse);
 			else
 				synchResponse = new SynchResponse (true, SQLiteXM.Defines.SynchErrorTypes.success);
 							
@@ -490,7 +514,7 @@ namespace SQLiteXM
 				}
 
 			if (synchResponse != null)
-				await Synchronize.synchSettings.SynchErrorDel (synchResponse);
+				await Synchronize.synchSettings.SynchErrorDel (synchDescriptor, synchResponse);
 			else
 				synchResponse = new SynchResponse (true, SQLiteXM.Defines.SynchErrorTypes.success);
 
