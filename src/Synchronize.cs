@@ -388,11 +388,7 @@ namespace SQLiteXM
 			}			
 			catch( HotRiotException hex )
 			{
-				string ieMessage = string.Empty;
-				if (hex.InnerException != null)
-					ieMessage = hex.InnerException.Message;
-
-				synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage);
+				synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, (string)hex.Data ["exceptionType"], hex.Message);
 			}
 
 			if (synchResponse == null) 
@@ -452,11 +448,7 @@ namespace SQLiteXM
 				} 
 				catch (HotRiotException hex) 
 				{
-					string ieMessage = string.Empty;
-					if (hex.InnerException != null)
-						ieMessage = hex.InnerException.Message;
-
-					synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage);
+					synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, (string)hex.Data ["exceptionType"], hex.Message);
 				}
 
 				if (hrInsertResponse != null) 
@@ -499,11 +491,7 @@ namespace SQLiteXM
 			}			
 			catch( HotRiotException hex )
 			{
-				string ieMessage = string.Empty;
-				if (hex.InnerException != null)
-					ieMessage = hex.InnerException.Message;
-
-				synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, hex.Message, ieMessage);
+				synchResponse = new SynchResponse (SQLiteXM.Defines.SynchErrorTypes.exception, hex.InnerException, (string)hex.Data ["exceptionType"], hex.Message);
 			}
 
 			if (hrDeleteResponse != null)
