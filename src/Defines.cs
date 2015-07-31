@@ -26,12 +26,6 @@ namespace SQLiteXM
 			processing
 		};
 
-		// System SQL commands.
-/*		public static readonly string _systemInsertCloudSynchDescriptor = "INSERT INTO _systemCloudSynchDescriptor (dbName, tableName, cloudSynchFlag) VALUES(?, ?, ?)";
-		public static readonly string _systemGetTables = "SELECT name FROM sqlite_master WHERE type='table'";
-		public static readonly string _systemGetLastInsertID = "select last_insert_rowid() as rowID";
-		public static readonly string _systemUpdateSynchID = "UPDATE {0} SET systemSynchID = ? WHERE id = ?";
-*/
 		// Error message defines.
 		public enum SxmErrorCode{
 		sqliteException,

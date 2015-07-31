@@ -9,7 +9,7 @@ using System.Collections.Specialized;
 
 namespace SQLiteXM
 {
-	public delegate Task<SynchResponse> SynchDel (List<SynchDescriptor> sdList);
+	public delegate Task<bool> SynchDel (List<SynchDescriptor> sdList);
 	public delegate Task SynchErrorDel (SynchDescriptor synchDescriptor, SynchResponse synchResponse);
 	public delegate Task SynchPostProcessDel (SynchDescriptor originalSD, List<SynchDescriptor> sdList, SynchResponse synchResponse);
 	public delegate Task<List<SynchDescriptor>> SynchPreProcessDel (SynchDescriptor sd);
@@ -146,7 +146,16 @@ namespace SQLiteXM
 									Hashtable descriptorRow = descriptorRows [tableName];
 									if ((long)descriptorRow ["cloudSynchFlag"] != Defines.NO_CLOUD_SYNCH) 
 									{
-										Hashtable recordDataToSynch = getRecordDataToSynch ((string)recordToSynch ["dbName"], (string)recordToSynch ["tableName"], (string)recordToSynch ["systemSynchID"]);
+										Hashtable recordDataToSynch = null;
+
+										if (((string)recordToSynch ["action"]).Equals ("delete") == true)
+										{
+											recordDataToSynch = new Hashtable ();	
+											recordDataToSynch.Add ("systemSynchID", (string)recordToSynch ["systemSynchID"]);
+										}
+										else
+											recordDataToSynch = getRecordDataToSynch ((string)recordToSynch ["dbName"], (string)recordToSynch ["tableName"], (string)recordToSynch ["systemSynchID"]);
+										
 										if (recordDataToSynch != null && recordDataToSynch.Count > 0) 
 										{
 											List<SynchDescriptor> synchDescriptors = null;
@@ -168,8 +177,7 @@ namespace SQLiteXM
 												}
 											}
 
-											SynchResponse synchResponse = await Synchronize.synchSettings.SynchDel (synchDescriptors);
-											if (synchResponse.removeFlag == true)
+											if (await Synchronize.synchSettings.SynchDel (synchDescriptors) == true)
 											{
 												// Success or a non-recoverable error. Must inspect return synchResponse.
 												removeRecordFromSynch ((long)recordToSynch ["id"]);
@@ -182,7 +190,18 @@ namespace SQLiteXM
 											}
 
 											if (Synchronize.synchSettings.SynchPostProcessDel != null) // Post-process the record that was synchronized.
+											{
+												SynchResponse synchResponse = null;
+												for (int i=synchDescriptors.Count-1; i>=0; i--)
+												{
+													if (synchDescriptors [i].synchResponse != null)
+													{
+														synchResponse = synchDescriptors [i].synchResponse;
+														break;
+													}
+												}
 												await Synchronize.synchSettings.SynchPostProcessDel (synchDescriptor, synchDescriptors, synchResponse);
+											}
 										}
 										else
 											removeRecordFromSynch ((long)recordToSynch ["id"]);
@@ -278,7 +297,7 @@ namespace SQLiteXM
 			}
 		}
 
-		internal static async Task<SynchResponse> SynchDel (List<SynchDescriptor> sdList)
+		internal static async Task<bool> SynchDel (List<SynchDescriptor> sdList)
 		{
 			SynchDescriptor synchDescriptor = null;
 
@@ -307,7 +326,7 @@ namespace SQLiteXM
 						break; 
 			}
 
-			return synchDescriptor.synchResponse;
+			return synchDescriptor.synchResponse.removeFlag;
 		}
 
 		private static async Task performPartialSynchCleanup (List<SynchDescriptor> sdList, SynchResponse synchResponse, int countProcessed)
