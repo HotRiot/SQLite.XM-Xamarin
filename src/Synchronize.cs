@@ -1,4 +1,8 @@
-﻿using System;
+﻿// Uncomment the conditional compilation directive below for the target platform you are building.
+#define ANDROID_BUILD  // For building Android applications.
+//#define IOS_BUILD    // For building iOS apps.
+
+using System;
 using HotRiot_CS;
 using Mono.Data.Sqlite;
 using System.Threading;
@@ -6,13 +10,67 @@ using System.Collections;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+#if ANDROID_BUILD
+using Android.App;
+#endif
+#if IOS_BUILD
+using MonoTouch.UIKit;
+#endif
 
 namespace SQLiteXM
 {
-	public delegate Task<bool> SynchDel (List<SynchDescriptor> sdList);
-	public delegate Task SynchErrorDel (SynchDescriptor synchDescriptor, SynchResponse synchResponse);
-	public delegate Task SynchPostProcessDel (SynchDescriptor originalSD, List<SynchDescriptor> sdList, SynchResponse synchResponse);
-	public delegate Task<List<SynchDescriptor>> SynchPreProcessDel (SynchDescriptor sd);
+	#if ANDROID_BUILD
+	[Service]
+	public class SynchronizeService : Service
+	{
+		public SynchronizeService ()
+		{
+		}
+
+		public override Android.OS.IBinder OnBind (Android.Content.Intent intent)
+		{
+			throw new NotImplementedException ();
+		}
+
+		private ArrayList getSynchThreads ()
+		{
+			ArrayList synchThreads = new ArrayList ();
+
+			ArrayList databaseNames = DatabaseDescriptor.getDatabaseNames ();
+			for (int i = 0; i < databaseNames.Count; i++) 
+			{
+				string databaseName = (string)databaseNames [i];
+				Thread synchThread = Synchronize.getSynchThread (databaseName);
+				if (synchThread != null)
+					synchThreads.Add (synchThread);
+			}
+
+			return synchThreads;
+		}
+
+		public override StartCommandResult OnStartCommand  (Android.Content.Intent intent, StartCommandFlags flags, int startId)
+		{
+			ArrayList synchThreads = getSynchThreads ();
+
+			for (int i = 0; i < synchThreads.Count; i++) 
+				if(((Thread)synchThreads [i]).IsAlive == false)
+					((Thread)synchThreads [i]).Start ();
+
+			return StartCommandResult.Sticky;
+		}
+
+		public override void OnDestroy ()
+		{
+			base.OnDestroy ();
+
+			ArrayList synchThreads = getSynchThreads ();
+
+			for (int i = 0; i < synchThreads.Count; i++) 
+				if(((Thread)synchThreads [i]).IsAlive == true)
+					((Thread)synchThreads [i]).Abort ();
+		}
+	}
+	#endif
 
 	public class Synchronize
 	{
@@ -23,17 +81,23 @@ namespace SQLiteXM
 		private readonly EventWaitHandle synchLock;
 		private static SynchSettings synchSettings;
 		private Dictionary<string, Hashtable> descriptorRows = new Dictionary<string, Hashtable> ();
-		private static Dictionary<string, Object> synchDescriptors = new Dictionary<string, Object> ();
+		private static Dictionary<string, Thread> synchDescriptors = new Dictionary<string, Thread> ();
 		private static Dictionary<string, ArrayList> tableFileFields = new Dictionary<string, ArrayList>();
+
+		public delegate Task<bool> SynchDel (List<SynchDescriptor> sdList);
+		public delegate Task SynchErrorDel (SynchDescriptor synchDescriptor, SynchResponse synchResponse);
+		public delegate Task SynchPostProcessDel (SynchDescriptor originalSD, List<SynchDescriptor> sdList, SynchResponse synchResponse);
+		public delegate Task<List<SynchDescriptor>> SynchPreProcessDel (SynchDescriptor sd);
 
 		public static Synchronize createSynchronize (SxmConnection sxmConnection, string hrAppName, SynchSettings synchSettings)
 		{
 			Synchronize synchronize = null;
+			Synchronize.synchSettings = synchSettings;
 
 			try
 			{
 				if (synchDescriptors.ContainsKey (sxmConnection.DatabaseName) == false)
-					synchronize = new Synchronize (sxmConnection, hrAppName, synchSettings);
+					synchronize = new Synchronize (sxmConnection, hrAppName);
 
 				if (hrAppName != null && hotRiot == null)
 					hotRiot = HotRiot.init(hrAppName);
@@ -44,6 +108,14 @@ namespace SQLiteXM
 			}
 
 			return synchronize;
+		}
+
+		internal static Thread getSynchThread (string databaseName)
+		{
+			if (synchDescriptors.ContainsKey (databaseName) == true)
+				return synchDescriptors [databaseName];
+
+			return null;
 		}
 
 		public void interruptSynchThread()
@@ -62,9 +134,8 @@ namespace SQLiteXM
 				Monitor.Exit (synchLock);
 		}
 
-		private Synchronize (SxmConnection sxmConnection, string hrAppName, SynchSettings synchSettings)
+		private Synchronize (SxmConnection sxmConnection, string hrAppName)
 		{
-			Synchronize.synchSettings = synchSettings;
 			this.hrAppName = hrAppName;
 
 			dbName = sxmConnection.DatabaseName;
@@ -73,8 +144,13 @@ namespace SQLiteXM
 
 			if (synchThread != null) 
 			{
+				synchDescriptors.Add (sxmConnection.DatabaseName, synchThread);
 				synchLock = new EventWaitHandle (false, EventResetMode.ManualReset);
+
+				// Don't do if Android, Do if iOS. Android starts the synch threads using a service.
+				#if IOS_BUILD
 				synchThread.Start ();
+				#endif
 			}
 			else 
 			{
@@ -97,7 +173,7 @@ namespace SQLiteXM
 					synchDescriptorList = sxmTransaction.getAllRows ();
 				}
 
-				synchDescriptors.Add (sxmConnection.DatabaseName, new Object());
+				//synchDescriptors.Add (sxmConnection.DatabaseName, new Object());
 			}
 			#pragma warning disable 0168
 			catch (System.Exception notUsed) { /* Not much to do here. */ }
@@ -124,6 +200,9 @@ namespace SQLiteXM
 
 		private async void startSynch()
 		{
+			#if IOS_BUILD
+			int iosTaskId = UIApplication.SharedApplication.BeginBackgroundTask(() => {});
+			#endif
 			Hashtable recordToSynch = null;
 
 			while (true) 
@@ -177,7 +256,7 @@ namespace SQLiteXM
 												}
 											}
 
-											if (await Synchronize.synchSettings.SynchDel (synchDescriptors) == true)
+											if (await Synchronize.synchSettings.Synch (synchDescriptors) == true)
 											{
 												// Success or a non-recoverable error. Must inspect return synchResponse.
 												removeRecordFromSynch ((long)recordToSynch ["id"]);
@@ -186,7 +265,12 @@ namespace SQLiteXM
 											{
 												// Recoverable error was encountered.
 												recordToSynch = null;
+												#if IOS_BUILD
+												waitDuration = Defines.ONE_MINUTE;
+												#endif
+												#if ANDROID_BUILD
 												waitDuration = Defines.ONE_MINUTE * 2;
+												#endif
 											}
 
 											if (Synchronize.synchSettings.SynchPostProcessDel != null) // Post-process the record that was synchronized.
@@ -248,6 +332,9 @@ namespace SQLiteXM
 					removeRecordFromSynch ((long)recordToSynch ["id"]); 
 				}
 			}
+			#if IOS_BUILD
+			UIApplication.SharedApplication.EndBackgroundTask(iosTaskId);
+			#endif
 		}
 
 		private Hashtable getRecordDataToSynch (string dbName, string tableName, string systemSynchID)
@@ -297,7 +384,7 @@ namespace SQLiteXM
 			}
 		}
 
-		internal static async Task<bool> SynchDel (List<SynchDescriptor> sdList)
+		internal static async Task<bool> Synch (List<SynchDescriptor> sdList)
 		{
 			SynchDescriptor synchDescriptor = null;
 
@@ -381,7 +468,6 @@ namespace SQLiteXM
 		private static async Task<SynchResponse> synchData (SynchDescriptor synchDescriptor)
 		{
 			HRInsertResponse hrInsertResponse = null;
-			string errorMessage = string.Empty;
 			SynchResponse synchResponse = null;
 			String fieldName = null;
 
@@ -491,7 +577,6 @@ namespace SQLiteXM
 		private static async Task<SynchResponse> synchDelData (SynchDescriptor synchDescriptor)
 		{
 			HRDeleteResponse hrDeleteResponse = null;
-			string errorMessage = string.Empty;
 			SynchResponse synchResponse = null;
 
 			NameValueCollection recordData = new NameValueCollection();
@@ -529,4 +614,3 @@ namespace SQLiteXM
 		}
 	}
 }
-

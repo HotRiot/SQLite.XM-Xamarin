@@ -4,22 +4,22 @@ namespace SQLiteXM
 {
 	public class SynchOptions
 	{
-		private SynchErrorDel synchErrorDel;
-		public SynchErrorDel SynchErrorDel
+		private Synchronize.SynchErrorDel synchErrorDel;
+		public Synchronize.SynchErrorDel SynchErrorDel
 		{
 			get { return synchErrorDel; }
 			set { synchErrorDel = value; }
 		}
 
-		private SynchPreProcessDel synchPreProcessDel;
-		public SynchPreProcessDel SynchPreProcessDel
+		private Synchronize.SynchPreProcessDel synchPreProcessDel;
+		public Synchronize.SynchPreProcessDel SynchPreProcessDel
 		{
 			get { return synchPreProcessDel; }
 			set { synchPreProcessDel = value; }
 		}
 
-		private SynchPostProcessDel synchPostProcessDel;
-		public SynchPostProcessDel SynchPostProcessDel
+		private Synchronize.SynchPostProcessDel synchPostProcessDel;
+		public Synchronize.SynchPostProcessDel SynchPostProcessDel
 		{
 			get { return synchPostProcessDel; }
 			set { synchPostProcessDel = value; }
@@ -41,11 +41,11 @@ namespace SQLiteXM
 
 	public class SynchSettings : SynchOptions
 	{
-		private SynchDel synchDel;
-		public SynchDel SynchDel
+		private Synchronize.SynchDel synch;
+		public Synchronize.SynchDel Synch
 		{
-			get { return synchDel; }
-			set { synchDel = value; }
+			get { return synch; }
+			set { synch = value; }
 		}
 
 		public SynchSettings () : base()

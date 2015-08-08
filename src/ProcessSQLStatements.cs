@@ -9,11 +9,15 @@ namespace SQLiteXM
 
 		public static bool Parse (StreamReader sqlStatementAssets)
 		{
+			string sqlStatements = sqlStatementAssets.ReadToEnd ();
+			return Parse (sqlStatements);
+		}
+
+		public static bool Parse (string sqlStatements)
+		{
 			int searchOffset = 0;
 
-			string sqlStatements = sqlStatementAssets.ReadToEnd ();
 			while ( (searchOffset = getHeader (searchOffset, sqlStatements)) != -1 ) {}
-
 			return true;
 		}
 

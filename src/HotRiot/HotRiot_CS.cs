@@ -572,8 +572,6 @@ namespace HotRiot_CS
 		private async Task putObjectDirectS3(ArrayList putObjectRequestsLocal)
 		#pragma warning restore 1998
 		{
-			ArrayList putObjectRequests = new ArrayList();
-
 			try
 			{
 				foreach (PutObjectRequestLocal putObjectRequestLocal in putObjectRequestsLocal)

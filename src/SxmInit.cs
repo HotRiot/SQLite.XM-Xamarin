@@ -17,15 +17,15 @@ namespace SQLiteXM
 			SynchSettings synchSettings = new SynchSettings (synchOptions);
 			if (synchSettings.SynchErrorDel == null)
 				synchSettings.SynchErrorDel = Synchronize.ErrorDel;
-			synchSettings.SynchDel = Synchronize.SynchDel;
-			
+			synchSettings.Synch = Synchronize.Synch;
+
 			return initialize (hrAppName, synchSettings);
 		}
 
-		public static bool initialize(SynchDel synchDel) // Custom synchronize.
+		public static bool initialize(Synchronize.SynchDel synch) // Custom synchronize.
 		{
 			SynchSettings synchSettings = new SynchSettings ();
-			synchSettings.SynchDel = synchDel;
+			synchSettings.Synch = synch;
 
 			return initialize (null, synchSettings);
 		}
@@ -74,7 +74,7 @@ namespace SQLiteXM
 				foreach (string databaseName in connectionMap.Keys) 
 				{
 					SxmConnection conn = connectionMap [databaseName] as SxmConnection;
-					if (synchSettings.SynchDel != null) 
+					if (synchSettings.Synch != null) 
 					{
 						Synchronize synchronize = Synchronize.createSynchronize (conn, hrAppName, synchSettings);
 						if (synchronize != null) 
