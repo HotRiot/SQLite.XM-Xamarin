@@ -1,6 +1,5 @@
 ﻿
 // Uncomment the conditional compilation directive below for the target platform you are building.
-//#define WINDOWS_OR_MAC_BUILD   // For building Windows, Windows Phone, and Mac applications. Requires the System.Drawing assembly to be included in your project.
 #define ANDROID_BUILD   // For building Android applications.
 //#define IOS_BUILD  // For building iOS apps (iPhone and iPad).
 
@@ -37,6 +36,7 @@ namespace HotRiot_CS
 		private string fullyQualifiedHRDAURL;
 		private string fullyQualifiedHRURL;
 		private Hashtable fileFiledInfo;
+		private static string hrKey;
 		private string jSessionID;
 		private string hmKey;
 
@@ -63,7 +63,7 @@ namespace HotRiot_CS
 				HttpWebRequest request = (HttpWebRequest)WebRequest.Create(link.Substring(0, offset) + jSessionID);
 				request.Method = "POST";
 				request.ContentType = "application/x-www-form-urlencoded";
-				string postData = link.Substring(offset + 1);
+				string postData = link.Substring(offset + 1) + "&hsp-hrkey=" + hrKey;
 				byte[] bytes = System.Text.Encoding.UTF8.GetBytes(postData);
 				request.ContentLength = bytes.Length;
 
@@ -895,7 +895,31 @@ namespace HotRiot_CS
 		hotriot.fullyQualifiedHRDAURL = PROTOCOL + appName + ".k222.info/da";
 		hotriot.fullyQualifiedHRURL = PROTOCOL + appName + ".k222.info/process";
 
+		hrKey = getHRKey();
 		return hotriot;
+	}
+
+	private static string getHRKey()
+	{
+		string key = null;
+		Environment.SpecialFolder keyfileFolder = Environment.SpecialFolder.Personal;
+		string keyFilePath = Path.Combine(Environment.GetFolderPath(keyfileFolder), "hrKeyFile.key");
+
+		try
+		{
+			key = System.IO.File.ReadAllText(keyFilePath);
+		}
+		catch (Exception doNothing) { }
+
+		if (key != null)
+			key = key.Trim();
+		else
+		{
+			key = key = helpers.GetUniqueKey(42);
+			File.WriteAllText(keyFilePath, key);
+		}
+
+		return key;
 	}
 
 	// ----------------------------------- ACTION OPERATIONS ------------------------------------
@@ -905,6 +929,7 @@ namespace HotRiot_CS
 			await getPutDocumentCredentials();
 
 		recordData.Set("hsp-formname", databaseName);
+		recordData.Set("hsp-hrkey", hrKey);
 		return new HRInsertResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, recordData, files, databaseName)));
 	}
 
@@ -914,6 +939,7 @@ namespace HotRiot_CS
 			await getPutDocumentCredentials();
 
 		recordData.Set("hsp-formname", databaseName);
+		recordData.Set("hsp-hrkey", hrKey);
 		recordData.Set("hsp-json", updatePassword);
 		recordData.Set("hsp-recordID", recordID);
 		return new HRInsertResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, recordData, files, databaseName)));
@@ -935,6 +961,7 @@ namespace HotRiot_CS
 			await getPutDocumentCredentials();
 
 		recordData.Set("hsp-formname", databaseName);
+		recordData.Set("hsp-hrkey", hrKey);
 		recordData.Set("hsp-recordID", editKey);
 		recordData.Set("hsp-replaceinto", "true");
 
@@ -946,6 +973,7 @@ namespace HotRiot_CS
 		String[] allkeys = recordData.AllKeys;
 
 		recordData.Set("hsp-formname", databaseName);
+		recordData.Set("hsp-hrkey", hrKey);
 		foreach (string key in allkeys)
 		{
 			if (key.StartsWith("hsp-") == false)
@@ -980,12 +1008,14 @@ namespace HotRiot_CS
 	public async Task<HRSearchResponse> submitSearch(string searchName, NameValueCollection searchCriterion)
 	{
 		searchCriterion.Set("hsp-formname", searchName);
+		searchCriterion.Set("hsp-hrkey", hrKey);
 		return new HRSearchResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, searchCriterion)));
 	}
 
 	public async Task<HRLoginResponse> submitLogin(string loginName, NameValueCollection loginCredentials)
 	{
 		loginCredentials.Set("hsp-formname", loginName);
+		loginCredentials.Set("hsp-hrkey", hrKey);
 		return new HRLoginResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, loginCredentials)));
 	}
 
@@ -993,12 +1023,14 @@ namespace HotRiot_CS
 	{
 		notificationData.Set("hsp-formname", databaseName);
 		notificationData.Set("hsp-rtninsert", "1");
+		notificationData.Set("hsp-hrkey", hrKey);
 		return new HRNotificationResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, notificationData)));
 	}
 
 	public async Task<HRLoginLookupResponse> submitLostLoginLookup(string loginName, NameValueCollection loginLookupData)
 	{
 		loginLookupData.Set("hsp-formname", loginName);
+		loginLookupData.Set("hsp-hrkey", hrKey);
 		return new HRLoginLookupResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, loginLookupData)));
 	}
 
@@ -1018,6 +1050,7 @@ namespace HotRiot_CS
 		recordCountObject.Set("hsp-action", "recordcount");
 		recordCountObject.Set("hsp-sll", sll);
 		recordCountObject.Set("sinceLastLogin", "false");
+		recordCountObject.Set("hsp-hrkey", hrKey);
 		return await postRequest(new PostRequestParam(fullyQualifiedHRURL, recordCountObject));
 	}
 
@@ -1049,6 +1082,7 @@ namespace HotRiot_CS
 			deviceMessagingPayload.data.Set("hsp-devicecontentavailable", deviceMessagingPayload.contentAvailable.ToString());
 
 		deviceMessagingPayload.data.Set("hsp-initializepage", "hsp-mpush");
+		deviceMessagingPayload.data.Set("hsp-hrkey", hrKey);
 		HRPushServiceResponse hrPushServiceResponse = new HRPushServiceResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, deviceMessagingPayload.data)));
 
 		if (pushRequestDelegate != null)
@@ -1068,6 +1102,7 @@ namespace HotRiot_CS
 
 		deviceMessagingPayload.data.Add("hsp-iosrawjson", iosMessagingPayload.jsonPayload);
 		deviceMessagingPayload.data.Set("hsp-initializepage", "hsp-mpush");
+		deviceMessagingPayload.data.Set("hsp-hrkey", hrKey);
 		if (iosMessagingPayload.callbackData != null)
 			deviceMessagingPayload.data.Set("hsp-callbackdata", iosMessagingPayload.callbackData);
 
@@ -1085,6 +1120,7 @@ namespace HotRiot_CS
 
 		deviceMessagingPayload.data.Add("hsp-iosfeedback", "true");
 		deviceMessagingPayload.data.Set("hsp-initializepage", "hsp-mpush");
+		deviceMessagingPayload.data.Set("hsp-hrkey", hrKey);
 		if (callbackData != null)
 			deviceMessagingPayload.data.Set("hsp-callbackdata", callbackData);
 
@@ -1109,6 +1145,7 @@ namespace HotRiot_CS
 	{
 		NameValueCollection recordData = new NameValueCollection();
 		recordData.Set("hsp-formname", databaseName);
+		recordData.Set("hsp-hrkey", hrKey);
 		recordData.Set("hsp-initializepage", "hsp-dbmd");
 		return new HRMetadataResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, recordData)));
 	}

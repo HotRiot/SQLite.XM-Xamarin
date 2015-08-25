@@ -9,8 +9,9 @@ namespace SQLiteXM
 {
 	public class SxmTransaction : IDisposable
 	{
+		private bool interruptSynchronize = false;
 		private SxmConnection connection;
-		bool disposed = false;
+		private bool disposed = false;
 
 		public SxmTransaction (SxmConnection connection)
 		{
@@ -216,7 +217,8 @@ namespace SQLiteXM
 		public void executeNonQuery (string sqlStatement, ArrayList ParameterValues = null)
 		{
 			executeNonQueryTrans (sqlStatement, ParameterValues);
-			SxmInit.interruptSynchronize (connection.DatabaseName);
+			interruptSynchronize = true;
+//			SxmInit.interruptSynchronize (connection.DatabaseName);
 		}
 
 		public void executeNonQueryTrans (string sqlStatement, ArrayList ParameterValues = null)
@@ -324,12 +326,19 @@ namespace SQLiteXM
 		// Returns error code for SqliteException, otherwise throw the exception.
 		public SQLiteErrorCode commitTransaction ()
 		{
-			return connection.finishTransaction (SQLiteXM.Defines.commitTransaction);
+			SQLiteErrorCode ec = connection.finishTransaction (SQLiteXM.Defines.commitTransaction);
+			if (interruptSynchronize == true) 
+			{
+				SxmInit.interruptSynchronize (connection.DatabaseName);
+				interruptSynchronize = false;
+			}
+			return ec;
 		}
 
 		public void rollbackTransaction ()
 		{
 			connection.finishTransaction (SQLiteXM.Defines.rollbackTransaction);
+			interruptSynchronize = false;
 		}
 
 		// No-throw guarantee.

@@ -10,9 +10,6 @@ using System.Collections;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-#if ANDROID_BUILD
-using Android.App;
-#endif
 #if IOS_BUILD
 using MonoTouch.UIKit;
 #endif
@@ -20,8 +17,8 @@ using MonoTouch.UIKit;
 namespace SQLiteXM
 {
 	#if ANDROID_BUILD
-	[Service]
-	public class SynchronizeService : Service
+	[Android.App.Service]
+	public class SynchronizeService : Android.App.Service
 	{
 		public SynchronizeService ()
 		{
@@ -48,7 +45,7 @@ namespace SQLiteXM
 			return synchThreads;
 		}
 
-		public override StartCommandResult OnStartCommand  (Android.Content.Intent intent, StartCommandFlags flags, int startId)
+	public override Android.App.StartCommandResult OnStartCommand  (Android.Content.Intent intent, Android.App.StartCommandFlags flags, int startId)
 		{
 			ArrayList synchThreads = getSynchThreads ();
 
@@ -56,7 +53,7 @@ namespace SQLiteXM
 				if(((Thread)synchThreads [i]).IsAlive == false)
 					((Thread)synchThreads [i]).Start ();
 
-			return StartCommandResult.Sticky;
+			return Android.App.StartCommandResult.Sticky;
 		}
 
 		public override void OnDestroy ()
@@ -201,7 +198,7 @@ namespace SQLiteXM
 		private async void startSynch()
 		{
 			#if IOS_BUILD
-			int iosTaskId = UIApplication.SharedApplication.BeginBackgroundTask(() => {});
+			int iosTaskId = MonoTouch.UIKit.UIApplication.SharedApplication.BeginBackgroundTask(() => {});
 			#endif
 			Hashtable recordToSynch = null;
 
@@ -333,7 +330,7 @@ namespace SQLiteXM
 				}
 			}
 			#if IOS_BUILD
-			UIApplication.SharedApplication.EndBackgroundTask(iosTaskId);
+			MonoTouch.UIKit.UIApplication.SharedApplication.EndBackgroundTask(iosTaskId);
 			#endif
 		}
 
