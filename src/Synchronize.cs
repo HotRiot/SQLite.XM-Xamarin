@@ -10,9 +10,6 @@ using System.Collections;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-#if IOS_BUILD
-using MonoTouch.UIKit;
-#endif
 
 namespace SQLiteXM
 {

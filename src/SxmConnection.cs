@@ -5,7 +5,6 @@ using Mono.Data.Sqlite;
 using System.Data.Common;
 using System.Collections;
 using System.Threading.Tasks;
-using Java.Lang.Reflect;
 
 namespace SQLiteXM
 {
