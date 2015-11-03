@@ -529,7 +529,7 @@ namespace SQLiteXM
 			
 				try 
 				{
-					if ((hrInsertResponse = await HotRiot.getHotRiotInstance.submitKeyUpdateInsertRecord (synchDescriptor.tableName, "systemSynchID", recordData, fileData)).getResultCode () == HotRiot.SUCCESS) {
+					if ((hrInsertResponse = await HotRiot.getHotRiotInstance.submitKeyUpdateInsertRecord (synchDescriptor.tableName, "systemSynchID", recordData["systemSynchID"], recordData, fileData)).getResultCode () == HotRiot.SUCCESS) {
 						foreach (string fielFieldName in fileFields) 
 						{
 							if (fileData [fielFieldName] == null) 

@@ -1,5 +1,6 @@
 ﻿
 // Uncomment the conditional compilation directive below for the target platform you are building.
+//#define WINDOWS_OR_MAC_BUILD   // For building Windows, Windows Phone, and Mac applications. Requires the System.Drawing assembly to be included in your project.
 #define ANDROID_BUILD   // For building Android applications.
 //#define IOS_BUILD  // For building iOS apps (iPhone and iPad).
 
@@ -161,6 +162,9 @@ namespace HotRiot_CS
 							// This call runs asynchronous with this method. T0
 							// execute synchronous, apply the "await" operator.
 							#pragma warning disable 4014
+							foreach (PutObjectRequestLocal putObjectRequestLocal in putObjectRequests)
+								if(File.Exists(putObjectRequestLocal.FilePath) == false)
+									throw new FileNotFoundException("The file '" + putObjectRequestLocal.FilePath + "' could not be found.");
 							putObjectDirectS3(putObjectRequests);
 							#pragma warning restore 4014
 
@@ -945,17 +949,19 @@ namespace HotRiot_CS
 		return new HRInsertResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, recordData, files, databaseName)));
 	}
 
-	public async Task<HRInsertResponse> submitKeyUpdateRecord(string databaseName, string editKey, NameValueCollection recordData, NameValueCollection files)
+	public async Task<HRInsertResponse> submitKeyUpdateRecord(string databaseName, string editKey, string editKeyVal, NameValueCollection recordData, NameValueCollection files)
 	{
 		if (files != null)
 			await getPutDocumentCredentials();
 
 		recordData.Set("hsp-formname", databaseName);
 		recordData.Set("hsp-recordID", editKey);
+		recordData.Set("hsp-replaceintoval", editKeyVal);
+
 		return new HRInsertResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, recordData, files, databaseName)));
 	}
 
-	public async Task<HRInsertResponse> submitKeyUpdateInsertRecord(string databaseName, string editKey, NameValueCollection recordData, NameValueCollection files)
+	public async Task<HRInsertResponse> submitKeyUpdateInsertRecord(string databaseName, string editKey, string editKeyVal, NameValueCollection recordData, NameValueCollection files)
 	{
 		if (files != null)
 			await getPutDocumentCredentials();
@@ -964,6 +970,7 @@ namespace HotRiot_CS
 		recordData.Set("hsp-hrkey", hrKey);
 		recordData.Set("hsp-recordID", editKey);
 		recordData.Set("hsp-replaceinto", "true");
+		recordData.Set("hsp-replaceintoval", editKeyVal);
 
 		return new HRInsertResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, recordData, files, databaseName)));
 	}
@@ -1002,7 +1009,7 @@ namespace HotRiot_CS
 
 		recordData.Set(fileFieldName, "hsp-deletefile");
 		recordData.Set(editKey, editKeyValue);
-		return await submitKeyUpdateRecord(databaseName, editKey, recordData, null);
+		return await submitKeyUpdateRecord(databaseName, editKey, editKeyValue, recordData, null);
 	}
 
 	public async Task<HRSearchResponse> submitSearch(string searchName, NameValueCollection searchCriterion)
@@ -1112,6 +1119,19 @@ namespace HotRiot_CS
 			pushRequestDelegate(hrPushServiceResponse);
 
 		return hrPushServiceResponse;
+	}
+
+	public async Task<HRDeviceRegistrationResponse> submitSNSDeviceIDRegistrationRequest(string deviceID, string callbackData)
+	{
+		NameValueCollection data = new NameValueCollection();
+
+		data.Add("hsp-token", deviceID);
+		data.Set("hsp-initializepage", "hsp-mtoken");
+		data.Set("hsp-callbackdata", callbackData);
+
+		HRDeviceRegistrationResponse hrDeviceRegistrationResponse = new HRDeviceRegistrationResponse(await postRequest(new PostRequestParam(fullyQualifiedHRURL, data)));
+
+		return hrDeviceRegistrationResponse;
 	}
 
 	public async Task<HRPushServiceResponse> submitAPNSFeedbackRequest(string callbackData)
@@ -2153,9 +2173,27 @@ public class HRResponse : HotRiotJSON
 
 
 	// ------------------------------------- DATABASEMETADATA RECORD ACTION -------------------------------------
+	// public string getDatabaseName()  Implementation in search action.
+
 	//public string[] getFieldNames()  Implementation in search action.
 
 	//public string[] getFieldTypes()  Implementation in search action.
+
+	// public string getCallbackData()  Implementation in insert action.
+
+
+	// ------------------------------------- SNSTOKENREGISTRATION RECORD ACTION -------------------------------------
+	// public string getCallbackData()  Implementation in insert action.
+
+	public string getSNSDeviceEndpoint()
+	{
+		return getGeneralInfoString("snsEndPoint");
+	}
+
+	public string getNativeDeviceID()
+	{
+		return getGeneralInfoString("deviceID");
+	}
 
 
 	// -------------------------------- ROLLSESSIONPROVIDER RECORD ACTION --------------------------------
@@ -2568,6 +2606,13 @@ public class HRGetTriggerResponse : HRResponse
 public class HRDeleteResponse : HRResponse
 {
 	public HRDeleteResponse(HotRiotJSON hotRiotJSON)
+		: base(hotRiotJSON)
+	{
+	}
+}
+public class HRDeviceRegistrationResponse : HRResponse
+{
+	public HRDeviceRegistrationResponse(HotRiotJSON hotRiotJSON)
 		: base(hotRiotJSON)
 	{
 	}
