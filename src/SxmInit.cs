@@ -180,7 +180,10 @@ namespace SQLiteXM
 		private static void applyAlterTableStatements (string key, Hashtable connectionMap)
 		{
 			SxmConnection sxmConnection = null;
-			ArrayList alterStatementsList = SqlStatements.alterStatements [key] as ArrayList;
+            ArrayList alterStatementsList = null;
+
+            if (SqlStatements.alterStatements != null)
+			    alterStatementsList = SqlStatements.alterStatements [key] as ArrayList;
 
 			if (alterStatementsList != null) 
 			{
@@ -251,7 +254,10 @@ namespace SQLiteXM
 
 		private static void applyIndexTableStatements (string key, Hashtable connectionMap)
 		{
-			ArrayList indexStatementsList = SqlStatements.indexStatements [key] as ArrayList;
+            ArrayList indexStatementsList = null;
+
+            if(SqlStatements.indexStatements != null)
+			    indexStatementsList = SqlStatements.indexStatements [key] as ArrayList;
 
 			if (indexStatementsList != null) 
 			{
